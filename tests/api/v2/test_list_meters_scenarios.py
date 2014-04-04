@@ -21,6 +21,7 @@
 
 import base64
 import datetime
+import json as jsonutils
 import logging
 import testscenarios
 
@@ -149,6 +150,90 @@ class TestListMeters(FunctionalTest,
                          set(['meter.test', 'meter.mine']))
         self.assertEqual(set(r['source'] for r in data),
                          set(['test_source', 'test_source1']))
+
+    def test_list_meters_query_with_timestamp(self):
+        date_time = datetime.datetime(2012, 7, 2, 10, 41)
+        isotime = date_time.isoformat()
+        resp = self.get_json('/meters',
+                             q=[{'field': 'timestamp',
+                                 'op': 'gt',
+                                 'value': isotime}],
+                             expect_errors=True)
+        self.assertEqual(400, resp.status_code)
+        self.assertEqual('Unknown argument: "timestamp": '
+                         'not valid for this resource',
+                         jsonutils.loads(resp.body)['error_message']
+                         ['faultstring'])
+
+    def test_query_samples_with_invalid_field_name_and_non_eq_operator(self):
+        resp = self.get_json('/meters/meter.mine',
+                             q=[{'field': 'non_valid_field_name',
+                                 'op': 'gt',
+                                 'value': 3}],
+                             expect_errors=True)
+        resp_string = jsonutils.loads(resp.body)
+        fault_string = resp_string['error_message']['faultstring']
+        expected_error_message = ('Unknown argument: "non_valid_field_name"'
+                                  ': unrecognized field in query: '
+                                  '[<Query u\'non_valid_field_name\' '
+                                  'gt u\'3\' None>]')
+        self.assertEqual(400, resp.status_code)
+        self.assertTrue(fault_string.startswith(expected_error_message))
+
+    def test_query_samples_with_invalid_field_name_and_eq_operator(self):
+        resp = self.get_json('/meters/meter.mine',
+                             q=[{'field': 'non_valid_field_name',
+                                 'op': 'eq',
+                                 'value': 3}],
+                             expect_errors=True)
+        resp_string = jsonutils.loads(resp.body)
+        fault_string = resp_string['error_message']['faultstring']
+        expected_error_message = ('Unknown argument: "non_valid_field_name"'
+                                  ': unrecognized field in query: '
+                                  '[<Query u\'non_valid_field_name\' '
+                                  'eq u\'3\' None>]')
+        self.assertEqual(400, resp.status_code)
+        self.assertTrue(fault_string.startswith(expected_error_message))
+
+    def test_query_samples_with_invalid_operator_and_valid_field_name(self):
+        resp = self.get_json('/meters/meter.mine',
+                             q=[{'field': 'project_id',
+                                 'op': 'lt',
+                                 'value': '3'}],
+                             expect_errors=True)
+        resp_string = jsonutils.loads(resp.body)
+        fault_string = resp_string['error_message']['faultstring']
+        expected_error_message = ("Invalid input for field/attribute op. " +
+                                  "Value: 'lt'. unimplemented operator for" +
+                                  " project_id")
+        self.assertEqual(400, resp.status_code)
+        self.assertEqual(fault_string, expected_error_message)
+
+    def test_list_meters_query_wrong_type_metadata(self):
+        resp = self.get_json('/meters/meter.test',
+                             q=[{'field': 'metadata.size',
+                             'op': 'eq',
+                             'value': '0',
+                             'type': 'blob'}],
+                             expect_errors=True
+                             )
+        expected_error_message = 'The data type blob is not supported.'
+        resp_string = jsonutils.loads(resp.body)
+        fault_string = resp_string['error_message']['faultstring']
+        self.assertTrue(fault_string.startswith(expected_error_message))
+
+    def test_query_samples_with_search_offset(self):
+        resp = self.get_json('/meters/meter.mine',
+                             q=[{'field': 'search_offset',
+                                 'op': 'eq',
+                                 'value': 42}],
+                             expect_errors=True)
+        self.assertEqual(400, resp.status_code)
+        self.assertEqual("Invalid input for field/attribute field. "
+                         "Value: 'search_offset'. "
+                         "search_offset cannot be used without timestamp",
+                         jsonutils.loads(resp.body)['error_message']
+                         ['faultstring'])
 
     def test_list_meters_with_dict_metadata(self):
         data = self.get_json('/meters/meter.mine',

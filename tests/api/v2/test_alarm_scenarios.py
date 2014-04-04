@@ -167,6 +167,20 @@ class TestAlarms(FunctionalTest,
                              for r in data if 'combination_rule' in r),
                          set(['or']))
 
+    def test_alarms_query_with_timestamp(self):
+        date_time = datetime.datetime(2012, 7, 2, 10, 41)
+        isotime = date_time.isoformat()
+        resp = self.get_json('/alarms',
+                             q=[{'field': 'timestamp',
+                                 'op': 'gt',
+                                 'value': isotime}],
+                             expect_errors=True)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(jsonutils.loads(resp.body)['error_message']
+                         ['faultstring'],
+                         'Unknown argument: "timestamp": '
+                         'not valid for this resource')
+
     def test_get_not_existing_alarm(self):
         resp = self.get_json('/alarms/alarm-id-3', expect_errors=True)
         self.assertEqual(resp.status_code, 404)
@@ -335,6 +349,30 @@ class TestAlarms(FunctionalTest,
         alarms = list(self.conn.get_alarms())
         self.assertEqual(4, len(alarms))
 
+    def test_post_invalid_alarm_query_field_type(self):
+        json = {
+            'name': 'added_alarm',
+            'type': 'threshold',
+            'threshold_rule': {
+                'meter_name': 'ameter',
+                'query': [{'field': 'metadata.valid',
+                           'op': 'eq',
+                           'value': 'value',
+                           'type': 'blob'}],
+                'comparison_operator': 'gt',
+                'threshold': 2.0,
+                'statistic': 'avg',
+            }
+        }
+        resp = self.post_json('/alarms', params=json, expect_errors=True,
+                              status=400, headers=self.auth_headers)
+        expected_error_message = 'The data type blob is not supported.'
+        resp_string = jsonutils.loads(resp.body)
+        fault_string = resp_string['error_message']['faultstring']
+        self.assertTrue(fault_string.startswith(expected_error_message))
+        alarms = list(self.conn.get_alarms())
+        self.assertEqual(4, len(alarms))
+
     def test_post_invalid_alarm_have_multiple_rules(self):
         json = {
             'name': 'added_alarm',
@@ -359,6 +397,31 @@ class TestAlarms(FunctionalTest,
             resp.json['error_message']['faultstring'],
             'threshold_rule and combination_rule cannot '
             'be set at the same time')
+
+    def test_post_invalid_alarm_timestamp_in_threshold_rule(self):
+        date_time = datetime.datetime(2012, 7, 2, 10, 41)
+        isotime = date_time.isoformat()
+
+        json = {
+            'name': 'invalid_alarm',
+            'type': 'threshold',
+            'threshold_rule': {
+                'meter_name': 'ameter',
+                'query': [{'field': 'timestamp',
+                           'op': 'gt',
+                           'value': isotime}],
+                'comparison_operator': 'gt',
+                'threshold': 2.0,
+            }
+        }
+        resp = self.post_json('/alarms', params=json, expect_errors=True,
+                              status=400, headers=self.auth_headers)
+        alarms = list(self.conn.get_alarms())
+        self.assertEqual(4, len(alarms))
+        self.assertEqual(
+            'Unknown argument: "timestamp": '
+            'not valid for this resource',
+            resp.json['error_message']['faultstring'])
 
     def test_post_alarm_defaults(self):
         to_check = {
