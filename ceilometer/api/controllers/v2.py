@@ -802,7 +802,7 @@ class MeterController(rest.RestController):
         def_user_id = pecan.request.headers.get('X-User-Id')
 
         if auth_project:
-            auth_msg = 'Non-admin user can not post samples!'
+            auth_msg = 'Non-admin user cannot post samples!'
             raise wsme.exc.InvalidInput('user_id', def_user_id,
                                         auth_msg)
 

@@ -48,6 +48,7 @@ class TestPostSamples(FunctionalTest,
         super(TestPostSamples, self).setUp()
         self.published = []
         self.stubs.Set(rpc, 'cast', self.faux_cast)
+        self.auth_headers = {'X-Roles': 'admin'}
 
     def test_one(self):
         s1 = [{'counter_name': 'apples',
@@ -60,7 +61,8 @@ class TestPostSamples(FunctionalTest,
                'resource_metadata': {'name1': 'value1',
                                      'name2': 'value2'}}]
 
-        data = self.post_json('/meters/apples/', s1)
+        data = self.post_json('/meters/apples/', s1,
+                              headers=self.auth_headers)
 
         # timestamp not given so it is generated.
         s1[0]['timestamp'] = data.json[0]['timestamp']
@@ -71,6 +73,26 @@ class TestPostSamples(FunctionalTest,
 
         self.assertEqual(s1, data.json)
         self.assertEqual(s1[0], self.published[0][1]['args']['data'][0])
+
+    def test_non_admin_user(self):
+        """Do not allow non-admin user to post samples."""
+        s1 = [{'counter_name': 'my_counter_name',
+               'counter_type': 'INVALID_TYPE',
+               'counter_unit': 'instance',
+               'counter_volume': 1,
+               'source': 'closedstack',
+               'resource_id': 'bd9431c1-8d69-4ad3-803a-8d4a6b89fd36',
+               'project_id': '35b17138-b364-4e6a-a131-8f3099c5be68',
+               'user_id': 'efd87807-12d2-4b38-9c70-5f5c2ac427ff',
+               'resource_metadata': {'name1': 'value1',
+                                     'name2': 'value2'}}]
+
+        data = self.post_json('/meters/my_counter_name/', s1,
+                              headers={'X-Roles': 'member'},
+                              expect_errors=True)
+
+        self.assertEqual(data.status_int, 400)
+        self.assertEqual(len(self.published), 0)
 
     def test_invalid_counter_type(self):
         s1 = [{'counter_name': 'my_counter_name',
@@ -85,7 +107,7 @@ class TestPostSamples(FunctionalTest,
                                      'name2': 'value2'}}]
 
         data = self.post_json('/meters/my_counter_name/', s1,
-                              expect_errors=True)
+                              headers=self.auth_headers, expect_errors=True)
 
         self.assertEqual(data.status_int, 400)
         self.assertEqual(len(self.published), 0)
@@ -105,7 +127,7 @@ class TestPostSamples(FunctionalTest,
                                      'name2': 'value2'}}]
 
         data = self.post_json('/meters/my_counter_name/', s1,
-                              expect_errors=True)
+                              headers=self.auth_headers, expect_errors=True)
 
         self.assertEqual(data.status_int, 400)
         self.assertEqual(len(self.published), 0)
@@ -156,7 +178,8 @@ class TestPostSamples(FunctionalTest,
                                        'name2': str(x + 4)}}
             samples.append(s)
 
-        data = self.post_json('/meters/apples/', samples)
+        data = self.post_json('/meters/apples/', samples,
+                              headers=self.auth_headers)
 
         for x, s in enumerate(samples):
             # source is modified to include the project_id.
@@ -199,6 +222,7 @@ class TestPostSamples(FunctionalTest,
             del s_broke[0][m]
             print('posting without %s' % m)
             data = self.post_json('/meters/my_counter_name/', s_broke,
+                                  headers=self.auth_headers,
                                   expect_errors=True)
             self.assertEqual(data.status_int, 400)
 
@@ -271,7 +295,7 @@ class TestPostSamples(FunctionalTest,
                'resource_metadata': {'name1': 'value1',
                                      'name2': 'value2'}}]
         data = self.post_json('/meters/my_counter_name/', s1,
-                              expect_errors=True)
+                              headers=self.auth_headers, expect_errors=True)
         self.assertEqual(data.status_int, 200)
         for x, s in enumerate(s1):
             # source is modified to include the project_id.
@@ -304,7 +328,7 @@ class TestPostSamples(FunctionalTest,
         data = self.post_json('/meters/my_counter_name/', s1,
                               expect_errors=True,
                               headers={
-                                  'X-Roles': 'chief-bottle-washer',
+                                  'X-Roles': 'admin',
                                   'X-Project-Id': project_id,
                                   'X-User-Id': user_id,
                               })
